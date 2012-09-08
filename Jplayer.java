@@ -5,6 +5,7 @@ import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.SourceDataLine;
+import javax.swing.text.Position.Bias;
 
 public class Jplayer {
 	InputStream dataInputStream;
@@ -12,13 +13,26 @@ public class Jplayer {
 	AudioFormat format;
 	SourceDataLine line;
 
+	Lrc lrc;
+
 	Decoder decoder;
 	byte[] rawBuff;
 	final int rawBuffSize = 4096;
 
 	final int WAVE_HEAD_SIZE = 44;
 
+	boolean isPlaying = false;
+
+	long audioFileSize = 0;
+	long readFileSize = 0;
+	long totalTime;
+	long currenTime;
+
 	public Jplayer() {
+
+	}
+
+	public void updateProgressBar(long current, long total) {
 
 	}
 
@@ -26,10 +40,16 @@ public class Jplayer {
 		if (path.regionMatches(0, "http://", 0, 7)) {
 			HttpLoad load = new HttpLoad(path);
 			dataInputStream = load.getInputStream();
+			audioFileSize = load.size;
 		} else {
 			LocalLoad load = new LocalLoad(path);
 			dataInputStream = load.getInputStream();
+			audioFileSize = load.size;
 		}
+
+		lrc = new Lrc(path);
+		if (lrc.size == 0)
+			lrc = null;
 
 		// parse wave or mp3
 		byte[] id = new byte[4];
@@ -74,27 +94,57 @@ public class Jplayer {
 		line.start();
 	}
 
-	public void playback() throws IOException {
+	public void start() {
+		Thread playingThread = new Thread(new Runnable() {
 
-		while (true) {
+			@Override
+			public void run() {
+				// TODO Auto-generated method stub
+				try {
+					playback();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		});
+
+		playingThread.start();
+	}
+
+	public void playback() throws IOException {
+		readFileSize = 0;
+		isPlaying = true;
+
+		while (isPlaying) {
 			int len;
 
 			if (decoder == null) {
 				rawBuff = new byte[rawBuffSize];
 				len = dataInputStream.read(rawBuff);
+				readFileSize += len;
+				currenTime = readFileSize
+						/ (long) (format.getSampleRate() * format.getChannels() * format
+								.getFrameSize());
 			} else {
 				rawBuff = decoder.decode();
 				len = decoder.getRawSize();
+				readFileSize += decoder.decodeSize;
+				currenTime = readFileSize * 8 * 1000 / decoder.bitRate;
 			}
 
 			if (len <= 0)
 				break;
+
+			showLrc(currenTime);
+			updateProgressBar(readFileSize, audioFileSize);
 
 			line.write(rawBuff, 0, len);
 		}
 	}
 
 	public void stop() {
+		isPlaying = false;
 		line.stop();
 	}
 
@@ -103,11 +153,31 @@ public class Jplayer {
 		line.close();
 	}
 
+	int lrcLine = -1;
+
+	public void showLrc(long ms) {
+		// TODO Auto-generated method stub
+		if (lrc == null)
+			return;
+
+		String lrcString = lrc.getLrcElement(ms);
+
+		if (lrcLine == lrc.currenLine)
+			return;
+
+		lrcLine = lrc.currenLine;
+		if (lrcString == null) {
+			System.out.println();
+		} else {
+			System.out.println(lrcString);
+		}
+	}
+
 	public static void main(String[] args) throws IOException,
 			LineUnavailableException {
 		Jplayer player = new Jplayer();
-		
-		player.open("http://192.168.1.109/GoodTime.mp3");
+
+		player.open("http://127.0.0.1/GoodTime.mp3");
 
 		player.playback();
 

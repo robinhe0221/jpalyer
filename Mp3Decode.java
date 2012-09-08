@@ -83,6 +83,7 @@ public class Mp3Decode extends Decoder {
 
 			int channels = header.mode() == Header.SINGLE_CHANNEL ? 1 : 2;
 			int rate = header.frequency();
+			bitRate = header.bitrate();
 
 			format = new AudioFormat(rate, 16, channels, true, false);
 			decoder = new javazoom.jl.decoder.Decoder();
